@@ -1,0 +1,8 @@
+{
+  "ping": "number",
+  "name": "string",
+  "props": {
+    "uptime": "number"
+  },
+  "arr": ["string"]
+}
