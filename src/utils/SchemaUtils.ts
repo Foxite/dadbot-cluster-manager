@@ -1,5 +1,5 @@
-import { readFile, access } from 'node:fs/promises';
-import { constants } from 'node:fs';
+const __Schema = require('../../config/schema.json');
+const Schema: any = __Schema;
 
 type CoolJSON = { [key: string | number]: string | CoolJSON };
 
@@ -10,38 +10,11 @@ export enum ValidSchemaTypes {
   'bigint'
 }
 
-async function readSchema() {
-  let fileContents;
-  try {
-    let strContents = await readFile('config/schema.json', {
-      encoding: 'utf-8'
-    });
-    fileContents = JSON.parse(strContents);
-  } catch (err) {
-    throw new Error('Unable to access schema.json');
-  }
-
-  return fileContents;
-}
-
 export async function validate() {
-  try {
-    access('config/schema.json', constants.R_OK);
-  } catch (err) {
-    throw new Error('Unable to access schema.json');
-  }
-
-  let fileContents;
-  try {
-    fileContents = await readSchema();
-  } catch (err) {
-    throw new Error('Unable to access schema.json');
-  }
-
-  if (Array.isArray(fileContents))
+  if (Array.isArray(Schema))
     throw new Error('Schema.json cannot have an array as root structure.');
 
-  Object.values(fileContents).forEach(a => {
+  Object.values(Schema).forEach(a => {
     if (getDataType(a) === null) throw new Error('Schema.json is invalid.');
     if (getDataType(a) === undefined)
       if (!recursiveValidate(a as CoolJSON))
@@ -75,23 +48,22 @@ function recursiveValidate(
 }
 
 export async function validateData(data: any) {
-  let schema = await readSchema();
   return Object.entries(data).every(a => {
     if (typeof a[1] === 'object') {
       if (Array.isArray(a[1])) {
-        return a[1].every(aa => schema[aa[0]].includes(typeof aa[1]));
+        return a[1].every(aa => Schema[aa[0]].includes(typeof aa[1]));
       } else {
         return Object.entries(a[1]).every(aa => {
           if (
-            Object.keys(schema[a[0]]).includes(aa[0]) &&
-            Object.values(schema[a[0]]).includes(typeof aa[1])
+            Object.keys(Schema[a[0]]).includes(aa[0]) &&
+            Object.values(Schema[a[0]]).includes(typeof aa[1])
           )
             return true;
           else return false;
         });
       }
     }
-    if (typeof a[1] !== schema[a[0]]) return false;
+    if (typeof a[1] !== Schema[a[0]] || !Schema[a[0]]) return false;
     else return true;
   });
 }
@@ -111,3 +83,8 @@ function getDataType(a: any): ValidSchemaTypes {
       return null;
   }
 }
+
+export default {
+  validate,
+  validateData
+};
