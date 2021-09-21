@@ -1,5 +1,5 @@
 const __Schema = require('../../config/schema.json');
-const Schema: any = __Schema;
+export const Schema: any = __Schema;
 
 type CoolJSON = { [key: string | number]: string | CoolJSON };
 
