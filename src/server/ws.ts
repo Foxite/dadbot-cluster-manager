@@ -1,25 +1,59 @@
 import ws from 'ws';
 import EventEmitter from 'events';
-import { ServerService } from '../types';
-import { randomUUID } from 'crypto';
+import { Cluster, GenericCloseCodes, ServerService } from '../types';
 import ms from 'ms';
-import { Schema } from '../utils/SchemaUtils';
 import { authenticate } from '../utils/AuthHandler';
+import { randomUUID } from 'crypto';
+const schema = require('../../config/schema.json');
 
 const __wsServer = new ws.Server({ path: '/manager', port: 8080 });
-const __emitter = new EventEmitter();
-const heartbeatTimeout: number = ms('10s');
 
-enum ServerOpCodes {
+class WSService extends EventEmitter implements ServerService {
+  public name = 'ws';
+  public getCluster(id: number): Cluster {
+    const clstr = sockets.get(id);
+    return { id, lastHeartbeat: clstr.lastHeartbeat, user: clstr.user };
+  }
+  public getAllClusters(): { [key: number]: Cluster } {
+    let data: { [key: number]: Cluster } = {};
+    sockets.forEach((value, key, self) => {
+      data[key] = {
+        id: key,
+        lastHeartbeat: value.lastHeartbeat,
+        user: value.user
+      };
+    });
+    return data;
+  }
+  public disconnectCluster(id: number, code: GenericCloseCodes) {
+    closeSocket(id, genericToWSCloseCode(code));
+  }
+  public serverClosing() {
+    sockets.forEach((c, k) => {
+      closeSocket(k, WSServerCloseCode.ServiceRestart);
+    });
+  }
+  public dataPushed() {
+    sockets.forEach(c => {
+      c.sendPayload({ op: ServerOpCodes.DataPushed });
+    });
+  }
+}
+const __emitter = new WSService();
+const heartbeatTimeout: number = ms('100s');
+
+export enum ServerOpCodes {
   Heartbeat,
   Identify,
   DataOK,
-  CCC,
+  CCCPropagate,
+  CCCReturn,
+  CCCConfirm,
   ClusterStatus,
   DataPushed
 }
 
-enum WSServerCloseCode {
+export enum WSServerCloseCode {
   Normal = 1000,
   NoStatus = 1005,
   Abnormal = 1006,
@@ -33,39 +67,60 @@ enum WSServerCloseCode {
   AuthenticationFailed = 4004,
   AlreadyAuthenticated = 4005,
   HeartbeatTimeout = 4006,
+  NotReadyForData = 4007,
   Ratelimited = 4008,
   InvalidCluster = 4010,
-  InvalidClusterCount = 4011
+  InvalidClusterCount = 4011,
+  invalidCCCID = 4012
 }
 
-enum WSClientCloseCode {
+export enum WSClientCloseCode {
   Normal = 1000,
   GoingAway = 1001,
   NoStatus = 1005,
   Abnormal = 1006
 }
 
-enum ClientOpCodes {
+export enum ClientOpCodes {
   Heartbeat,
   Identity,
   SendData,
-  CCC
+  CCCBegin,
+  CCCReturn
 }
 
-interface PayloadStructure<T> {
+export interface PayloadStructure<T> {
   op: ServerOpCodes | ClientOpCodes;
   d?: T;
 }
 
-namespace ServerStructures {
+export namespace ServerStructures {
   export interface Heartbeat {}
   export interface Identify {
     heartbeatTimeout: number;
     schema: any;
   }
+  export interface DataOK {}
+  export interface CCCPropagate {
+    id: string;
+    data: string;
+  }
+  export interface CCCReturn {
+    id: string;
+    from: number | 'all';
+    data: string;
+  }
+  export interface CCCConfirm {
+    id: string;
+  }
+  export interface ClusterStatus {
+    count: number;
+    connected: number[];
+  }
+  export interface DataPushed {}
 }
 
-namespace ClientStructures {
+export namespace ClientStructures {
   export interface Heartbeat {}
   export interface Identity {
     token: string;
@@ -76,25 +131,92 @@ namespace ClientStructures {
     type: 0 | 1 | 2;
     data: any;
   }
+  export interface CCCBegin {
+    to: number | 'all';
+    data: string;
+  }
+  export interface CCCReturn {
+    id: string;
+    data: string;
+  }
 }
 
-interface Cluster extends ws {
+interface CCCInstance {
+  startedBy: number;
+  to: number | 'all';
+  sendingData: string;
+  returnData?: string | string[];
+  id: string;
+}
+
+interface __WSClusterConnection extends ws {
+  lastHeartbeat?: number;
   heartbeatTimeoutID?: NodeJS.Timeout;
+  user: string;
   sendPayload(payload: PayloadStructure<any>): void;
 }
 
-const sockets: Map<number, Cluster> = new Map<number, Cluster>();
+function closeSocket(id: number, code: WSServerCloseCode) {
+  if (!sockets.has(id)) return;
+  sockets.get(id).close(code);
+  sockets.get(id).removeAllListeners();
+  __emitter.emit('disconnected', id, code);
+  sockets.delete(id);
+}
+
+function genericToWSCloseCode(code: GenericCloseCodes): WSServerCloseCode {
+  let closeCode: WSServerCloseCode;
+  switch (code) {
+    case GenericCloseCodes.ServerRestarting:
+      closeCode = WSServerCloseCode.ServiceRestart;
+      break;
+    case GenericCloseCodes.ServerError:
+      closeCode = WSServerCloseCode.ServerError;
+      break;
+    case GenericCloseCodes.InvalidData:
+      closeCode = WSServerCloseCode.DecodeError;
+      break;
+    case GenericCloseCodes.NotReadyForData:
+      closeCode = WSServerCloseCode.NotReadyForData;
+      break;
+    default:
+      closeCode = WSServerCloseCode.UnknownError;
+  }
+  return closeCode;
+}
+
+function parsePayload(rawPayload: string): PayloadStructure<any> {
+  let payload;
+  try {
+    payload = JSON.parse(rawPayload);
+  } catch (e) {
+    console.error(e);
+    throw new Error('rawPayload not valid JSON');
+  }
+  if (typeof payload.op !== 'number') {
+    throw new Error('rawPayload missing op code');
+  }
+  return payload as PayloadStructure<any>;
+}
+
+const sockets: Map<number, __WSClusterConnection> = new Map<
+  number,
+  __WSClusterConnection
+>();
 const clusterStats = {
   maxClusters: -1
 };
 
-function ClusterFromSocket(socket: ws): Cluster {
+const CCCInstances: Map<string, CCCInstance> = new Map<string, CCCInstance>();
+
+function ClusterFromSocket(socket: ws, usr: string): __WSClusterConnection {
   let skt = Object.create(socket);
 
-  let clstr: Cluster = Object.assign(skt, {
+  let clstr: __WSClusterConnection = Object.assign(skt, {
     sendPayload: function (payload: PayloadStructure<any>, ...args: any) {
       this.send(JSON.stringify(payload), ...args);
-    }
+    },
+    user: usr
   });
 
   return clstr;
@@ -104,12 +226,16 @@ __wsServer.on('connection', socket => {
   socket.send(
     JSON.stringify({
       op: ServerOpCodes.Identify,
-      d: { heartbeatTimeout, schema: Schema }
+      d: { heartbeatTimeout, schema }
     })
   );
   socket.once('message', data => {
-    let payload = parsePayload(data.toString()),
-      usr = authenticate((payload.d as ClientStructures.Identity).token);
+    let payload = parsePayload(data.toString());
+    if (!payload.d || !(payload.d as ClientStructures.Identity).token) {
+      socket.close(WSServerCloseCode.InvalidOpcode);
+      return;
+    }
+    let usr = authenticate((payload.d as ClientStructures.Identity).token);
     if (!usr) {
       socket.close(WSServerCloseCode.AuthenticationFailed);
       return;
@@ -139,7 +265,7 @@ __wsServer.on('connection', socket => {
 
       sockets.set(
         (payload.d as ClientStructures.Identity).cluster,
-        ClusterFromSocket(socket)
+        ClusterFromSocket(socket, usr)
       );
 
       function closeOrError(code: number | Error) {
@@ -147,6 +273,10 @@ __wsServer.on('connection', socket => {
           'disconnected',
           (payload.d as ClientStructures.Identity).cluster,
           code
+        );
+        clearTimeout(
+          sockets.get((payload.d as ClientStructures.Identity).cluster)
+            .heartbeatTimeoutID
         );
         sockets.delete((payload.d as ClientStructures.Identity).cluster);
       }
@@ -165,6 +295,8 @@ __wsServer.on('connection', socket => {
             parsePayload(data.toString())
           )
         );
+
+      handleHeartbeat((payload.d as ClientStructures.Identity).cluster);
 
       __emitter.emit(
         'authenticated',
@@ -186,12 +318,50 @@ function handleClientPayload(id: number, data: PayloadStructure<any>) {
       handleHeartbeat(id);
       break;
     case ClientOpCodes.SendData:
-      let dataa = data as PayloadStructure<ClientStructures.SendData>;
-      function dataCB(success: boolean) {
+      let sDData = data as PayloadStructure<ClientStructures.SendData>;
+      function dataCB(success: boolean, code?: GenericCloseCodes) {
         if (success) clstr.sendPayload({ op: ServerOpCodes.DataOK });
-        else closeSocket(id, WSServerCloseCode.ServerError);
+        else
+          closeSocket(
+            id,
+            code ? genericToWSCloseCode(code) : WSServerCloseCode.ServerError
+          );
       }
-      __emitter.emit('data', id, dataa.d, dataCB);
+      __emitter.emit('data', id, sDData.d, dataCB);
+      break;
+    case ClientOpCodes.CCCBegin:
+      let cccBeginData = data as PayloadStructure<ClientStructures.CCCBegin>;
+      let instance = beginCCC(id, cccBeginData.d.data, cccBeginData.d.to);
+      CCCInstances.set(instance.id, instance);
+      sockets.get(id).sendPayload({
+        op: ServerOpCodes.CCCConfirm,
+        d: { id: instance.id }
+      } as PayloadStructure<ServerStructures.CCCConfirm>);
+      break;
+    case ClientOpCodes.CCCReturn:
+      let cccReturnData = data as PayloadStructure<ClientStructures.CCCReturn>;
+      let ins = CCCInstances.get(cccReturnData.d.id);
+      if (ins.to === 'all') {
+        (ins.returnData as string[])[id] = cccReturnData.d.data;
+        if ((ins.returnData as string[]).length === sockets.size) {
+          sockets.get(ins.startedBy).sendPayload({
+            op: ServerOpCodes.CCCReturn,
+            d: {
+              data: JSON.stringify(ins.returnData),
+              id: ins.id,
+              from: ins.to
+            }
+          } as PayloadStructure<ServerStructures.CCCReturn>);
+          CCCInstances.delete(ins.id);
+        }
+      } else {
+        (ins.returnData as string) = cccReturnData.d.data;
+        sockets.get(ins.startedBy).sendPayload({
+          op: ServerOpCodes.CCCReturn,
+          d: { data: ins.returnData, id: ins.id, from: ins.to }
+        } as PayloadStructure<ServerStructures.CCCReturn>);
+        CCCInstances.delete(ins.id);
+      }
       break;
     default:
       closeSocket(id, WSServerCloseCode.InvalidOpcode);
@@ -199,37 +369,38 @@ function handleClientPayload(id: number, data: PayloadStructure<any>) {
   }
 }
 
+function beginCCC(from: number, data: string, to: number | 'all'): CCCInstance {
+  let instance: CCCInstance = {
+    startedBy: from,
+    sendingData: data,
+    returnData: to === 'all' ? [] : null,
+    to,
+    id: randomUUID()
+  };
+  if (to === 'all') {
+    sockets.forEach(c => {
+      c.sendPayload({
+        op: ServerOpCodes.CCCPropagate,
+        d: { data, id: instance.id }
+      } as PayloadStructure<ServerStructures.CCCPropagate>);
+    });
+  } else {
+    sockets.get(to).sendPayload({
+      op: ServerOpCodes.CCCPropagate,
+      d: { data, id: instance.id }
+    } as PayloadStructure<ServerStructures.CCCPropagate>);
+  }
+  return instance;
+}
+
 function handleHeartbeat(id: number) {
   const cluster = sockets.get(id);
   clearTimeout(cluster.heartbeatTimeoutID);
   cluster.sendPayload({ op: ServerOpCodes.Heartbeat });
-  setTimeout(() => {
+  cluster.lastHeartbeat = Date.now();
+  cluster.heartbeatTimeoutID = setTimeout(() => {
     closeSocket(id, WSServerCloseCode.HeartbeatTimeout);
   }, heartbeatTimeout);
 }
 
-function closeSocket(id: number, code: WSServerCloseCode) {
-  sockets.get(id).close(code);
-  __emitter.emit('disconnected', id, code);
-  sockets.delete(id);
-}
-
-function parsePayload(rawPayload: string): PayloadStructure<any> {
-  let payload;
-  try {
-    payload = JSON.parse(rawPayload);
-  } catch (e) {
-    console.error(e);
-    throw new Error('rawPayload not valid JSON');
-  }
-  if (typeof payload.op !== 'number') {
-    throw new Error('rawPayload missing op code');
-  }
-  return payload as PayloadStructure<any>;
-}
-
-class WSService extends EventEmitter implements ServerService {
-  public name = 'ws';
-}
-
-export default new WSService();
+export default __emitter;

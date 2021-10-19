@@ -1,8 +1,22 @@
 {
-  "ping": "number",
-  "name": "string",
-  "props": {
-    "uptime": "number"
+  "type": "object",
+  "properties": {
+    "ping": {
+      "type": "number",
+      "nullable": false
+    },
+    "guilds": {
+      "type": "number",
+      "nullable": false
+    },
+    "cpuUsage": {
+      "type": "number",
+      "nullable": false
+    },
+    "memoryUsage": {
+      "type": "number",
+      "nullable": false
+    }
   },
-  "arr": ["string"]
+  "required": ["ping", "guilds", "cpuUsage", "memoryUsage"]
 }

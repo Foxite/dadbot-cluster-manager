@@ -14,7 +14,7 @@ export function authenticate(token: string) {
 }
 
 export function generateToken(user: string) {
-  if (!Object.keys(Users).findIndex(u => u === user))
+  if (Object.keys(Users).findIndex(u => u === user) === -1)
     throw new Error('User does not exist.');
   else
     return `${Buffer.from(

@@ -1,4 +1,4 @@
-import { sequelize } from '.';
+import { sequelize, init as initDB } from '.';
 import { DataTypes, Model } from 'sequelize';
 
 export default class Errors extends Model {
@@ -7,6 +7,7 @@ export default class Errors extends Model {
 }
 
 (async function () {
+  await initDB();
   Errors.init(
     {
       id: { type: DataTypes.DATE, primaryKey: true },
