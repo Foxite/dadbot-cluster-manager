@@ -26,7 +26,7 @@ global.console = new Logger(
   process.env.DEBUG ? Level.DEBUG : Level.WARN
 ) as any;
 
-console.log(generateToken('joe'));
+console.log(generateToken('dadbot'));
 
 (async function () {
   try {
@@ -46,7 +46,7 @@ console.log(generateToken('joe'));
           case 0:
             if (!cdata.stats[id]) {
               if (!validateSchemaData(data.data))
-                callback(false, GenericCloseCodes.NotReadyForData);
+                callback(false, GenericCloseCodes.InvalidData);
               else {
                 callback(true);
                 cdata.stats[id] = data.data;

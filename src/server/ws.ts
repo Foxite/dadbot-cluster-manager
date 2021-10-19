@@ -40,12 +40,12 @@ class WSService extends EventEmitter implements ServerService {
   }
 }
 const __emitter = new WSService();
-const heartbeatTimeout: number = ms('100s');
+const heartbeatTimeout: number = ms('10s');
 
 export enum ServerOpCodes {
   Heartbeat,
   Identify,
-  DataOK,
+  DataACK,
   CCCPropagate,
   CCCReturn,
   CCCConfirm,
@@ -67,7 +67,6 @@ export enum WSServerCloseCode {
   AuthenticationFailed = 4004,
   AlreadyAuthenticated = 4005,
   HeartbeatTimeout = 4006,
-  NotReadyForData = 4007,
   Ratelimited = 4008,
   InvalidCluster = 4010,
   InvalidClusterCount = 4011,
@@ -100,7 +99,9 @@ export namespace ServerStructures {
     heartbeatTimeout: number;
     schema: any;
   }
-  export interface DataOK {}
+  export interface DataACK {
+    success: boolean;
+  }
   export interface CCCPropagate {
     id: string;
     data: string;
@@ -175,9 +176,6 @@ function genericToWSCloseCode(code: GenericCloseCodes): WSServerCloseCode {
       break;
     case GenericCloseCodes.InvalidData:
       closeCode = WSServerCloseCode.DecodeError;
-      break;
-    case GenericCloseCodes.NotReadyForData:
-      closeCode = WSServerCloseCode.NotReadyForData;
       break;
     default:
       closeCode = WSServerCloseCode.UnknownError;
@@ -320,12 +318,23 @@ function handleClientPayload(id: number, data: PayloadStructure<any>) {
     case ClientOpCodes.SendData:
       let sDData = data as PayloadStructure<ClientStructures.SendData>;
       function dataCB(success: boolean, code?: GenericCloseCodes) {
-        if (success) clstr.sendPayload({ op: ServerOpCodes.DataOK });
-        else
-          closeSocket(
-            id,
-            code ? genericToWSCloseCode(code) : WSServerCloseCode.ServerError
-          );
+        if (success)
+          clstr.sendPayload({
+            op: ServerOpCodes.DataACK,
+            d: { success: true }
+          } as PayloadStructure<ServerStructures.DataACK>);
+        else {
+          if (code !== GenericCloseCodes.NotReadyForData)
+            closeSocket(
+              id,
+              code ? genericToWSCloseCode(code) : WSServerCloseCode.ServerError
+            );
+          else
+            clstr.sendPayload({
+              op: ServerOpCodes.DataACK,
+              d: { success: true }
+            } as PayloadStructure<ServerStructures.DataACK>);
+        }
       }
       __emitter.emit('data', id, sDData.d, dataCB);
       break;
