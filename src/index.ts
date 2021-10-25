@@ -4,7 +4,7 @@ import Clusters from './utils/DB/Clusters';
 import Logs from './utils/DB/Logs';
 import Errors from './utils/DB/Errors';
 import Servers from './server';
-
+import FS from 'node:fs';
 import dotenvConfig from './utils/dotenv';
 import Ajv from 'ajv';
 import { generateToken } from './utils/AuthHandler';
@@ -19,7 +19,7 @@ const cdata: {
     stats: {},
     count: -1
   },
-  schema = require('../config/schema.json');
+  schema = JSON.parse(FS.readFileSync('./config/schema.json', 'utf-8'));
 let validateSchemaData: any;
 
 global.console = new Logger(
