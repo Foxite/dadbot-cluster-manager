@@ -40,7 +40,7 @@ class WSService extends EventEmitter implements ServerService {
   }
 }
 const __emitter = new WSService();
-const heartbeatTimeout: number = ms('10s');
+const heartbeatTimeout: number = ms('100s');
 
 export enum ServerOpCodes {
   Heartbeat,
@@ -276,6 +276,8 @@ __wsServer.on('connection', socket => {
       );
 
       function closeOrError(code: number | Error) {
+        if (!sockets.has((payload.d as ClientStructures.Identity).cluster))
+          return;
         __emitter.emit(
           'disconnected',
           (payload.d as ClientStructures.Identity).cluster,
@@ -372,11 +374,13 @@ function handleClientPayload(id: number, data: PayloadStructure<any>) {
       let ins = CCCInstances.get(cccReturnData.d.id);
       if (ins.to === 'all') {
         (ins.returnData as string[])[id] = cccReturnData.d.data;
-        if ((ins.returnData as string[]).length === sockets.size) {
+        if (
+          (ins.returnData as string[]).filter(a => !!a).length === sockets.size
+        ) {
           sockets.get(ins.startedBy).sendPayload({
             op: ServerOpCodes.CCCReturn,
             d: {
-              data: JSON.stringify(ins.returnData),
+              data: ins.returnData,
               id: ins.id,
               from: ins.to
             }
