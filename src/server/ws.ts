@@ -163,6 +163,15 @@ function closeSocket(id: number, code: WSServerCloseCode) {
   sockets.get(id).removeAllListeners();
   __emitter.emit('disconnected', id, code);
   sockets.delete(id);
+  sockets.forEach(socket => {
+    socket.sendPayload({
+      op: ServerOpCodes.ClusterStatus,
+      d: {
+        count: clusterStats.maxClusters,
+        connected: Array.from(sockets.keys())
+      }
+    } as PayloadStructure<ServerStructures.ClusterStatus>);
+  });
 }
 
 function genericToWSCloseCode(code: GenericCloseCodes): WSServerCloseCode {
@@ -295,6 +304,17 @@ __wsServer.on('connection', socket => {
         );
 
       handleHeartbeat((payload.d as ClientStructures.Identity).cluster);
+
+      sockets.forEach((socket, key) => {
+        if (key === (payload.d as ClientStructures.Identity).cluster) return;
+        socket.sendPayload({
+          op: ServerOpCodes.ClusterStatus,
+          d: {
+            count: clusterStats.maxClusters,
+            connected: Array.from(sockets.keys())
+          }
+        } as PayloadStructure<ServerStructures.ClusterStatus>);
+      });
 
       __emitter.emit(
         'authenticated',

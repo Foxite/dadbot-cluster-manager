@@ -7,7 +7,6 @@ import Servers from './server';
 import FS from 'node:fs';
 import dotenvConfig from './utils/dotenv';
 import Ajv from 'ajv';
-import { generateToken } from './utils/AuthHandler';
 import { GenericCloseCodes } from './types';
 const ajv = new Ajv();
 dotenvConfig();
@@ -25,8 +24,6 @@ let validateSchemaData: any;
 global.console = new Logger(
   process.env.DEBUG ? Level.DEBUG : Level.WARN
 ) as any;
-
-console.log(generateToken('dadbot'));
 
 (async function () {
   try {
