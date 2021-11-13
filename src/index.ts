@@ -53,12 +53,19 @@ global.console = new Logger(
                     .map((v, i, a) => i)
                     .every(v => !!cdata.stats[v])
                 ) {
-                  Clusters.create({ id: Date.now(), data: cdata.stats }).then(
-                    () => {
-                      cdata.stats = {};
-                      s.dataPushed();
-                    }
-                  );
+                  let a = Array.from(Object.entries(cdata.stats));
+                  let b: { [key: string]: any } = {};
+                  a.forEach(aa => {
+                    Array.from(Object.entries(aa[1])).forEach(bb => {
+                      if (b[bb[0] as string] === undefined)
+                        b[bb[0] as string] = [];
+                      b[bb[0] as string].push(bb[1]);
+                    });
+                  });
+                  Clusters.create({ id: Date.now(), data: b }).then(() => {
+                    cdata.stats = {};
+                    s.dataPushed();
+                  });
                 }
               }
               cdata.stats[id] = data;
