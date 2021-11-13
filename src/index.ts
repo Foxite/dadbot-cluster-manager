@@ -55,8 +55,8 @@ global.console = new Logger(
                 ) {
                   let a = Array.from(Object.entries(cdata.stats));
                   let b: { [key: string]: any } = {};
-                  a.forEach(aa => {
-                    Array.from(Object.entries(aa[1])).forEach(bb => {
+                  a.map(a => a[1]).forEach(aa => {
+                    Array.from(Object.entries(aa)).forEach(bb => {
                       if (b[bb[0] as string] === undefined)
                         b[bb[0] as string] = [];
                       b[bb[0] as string].push(bb[1]);
@@ -68,7 +68,7 @@ global.console = new Logger(
                   });
                 }
               }
-              cdata.stats[id] = data;
+              cdata.stats[id] = data.data;
             } else {
               callback(false, GenericCloseCodes.NotReadyForData);
             }
