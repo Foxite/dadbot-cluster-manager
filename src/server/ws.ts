@@ -308,7 +308,6 @@ __wsServer.on('connection', socket => {
       handleHeartbeat((payload.d as ClientStructures.Identity).cluster);
 
       sockets.forEach((socket, key) => {
-        if (key === (payload.d as ClientStructures.Identity).cluster) return;
         socket.sendPayload({
           op: ServerOpCodes.ClusterStatus,
           d: {
