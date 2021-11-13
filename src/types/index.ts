@@ -1,24 +1,24 @@
 import EventEmitter from 'node:events';
 
-export declare interface Cluster {
+export interface Cluster {
   id: number;
   lastHeartbeat: number;
   user: string;
 }
 
-export declare interface Data {
+export interface Data {
   type: 0 | 1 | 2;
   data: any;
 }
 
-export declare enum GenericCloseCodes {
+export enum GenericCloseCodes {
   ServerRestarting,
   InvalidData,
   ServerError,
   NotReadyForData
 }
 
-export declare interface Events {
+export interface Events {
   authenticated: (id: number, totalClusters: number, user: string) => void;
   data: (
     id: number,
@@ -28,7 +28,7 @@ export declare interface Events {
   disconnected: (cluster: number, code: number | Error) => void;
 }
 
-export declare interface ServerService extends EventEmitter {
+export interface ServerService extends EventEmitter {
   on<U extends keyof Events>(event: U, listener: Events[U]): this;
   once<U extends keyof Events>(event: U, listener: Events[U]): this;
   off<U extends keyof Events>(event: U, listener: Events[U]): this;
