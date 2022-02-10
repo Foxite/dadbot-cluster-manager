@@ -63,6 +63,8 @@ global.console = new Logger(
                     });
                   });
                   Clusters.create({ id: Date.now(), data: b }).then(() => {
+                    console.debug(cdata);
+                    console.debug(b);
                     cdata.stats = {};
                     s.dataPushed();
                   });
