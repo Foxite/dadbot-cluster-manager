@@ -47,6 +47,7 @@ global.console = new Logger(
               else {
                 callback(true);
                 cdata.stats[id] = data.data;
+                console.debug(cdata);
                 if (
                   new Array(cdata.count)
                     .fill(0)
