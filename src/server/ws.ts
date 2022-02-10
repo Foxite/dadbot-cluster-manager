@@ -328,6 +328,7 @@ __wsServer.on('connection', socket => {
 });
 
 function handleClientPayload(id: number, data: PayloadStructure<any>) {
+  console.debug(id, data);
   const clstr = sockets.get(id);
   switch (data.op) {
     case ClientOpCodes.Identity:
