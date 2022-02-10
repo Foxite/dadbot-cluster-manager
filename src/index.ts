@@ -28,7 +28,7 @@ global.console = new Logger(
 (async function () {
   try {
     validateSchemaData = ajv.compile(schema);
-    console.log(await initDB());
+    await initDB();
     Servers.forEach(s => {
       s.on('authenticated', (id, tC, u) => {
         cdata.count = tC;

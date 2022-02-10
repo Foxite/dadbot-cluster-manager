@@ -427,6 +427,7 @@ function beginCCC(from: number, data: string, to: number | 'all'): CCCInstance {
 
 function handleHeartbeat(id: number) {
   const cluster = sockets.get(id);
+  if (!cluster) return;
   clearTimeout(cluster.heartbeatTimeoutID);
   cluster.sendPayload({ op: ServerOpCodes.Heartbeat });
   cluster.lastHeartbeat = Date.now();
