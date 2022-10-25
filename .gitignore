@@ -3,3 +3,11 @@ node_modules
 .env
 dist
 config/users.json
+
+.yarn/*
+!.yarn/releases
+!.yarn/patches
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
