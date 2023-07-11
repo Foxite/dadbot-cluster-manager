@@ -1,0 +1,16 @@
+[Unit]
+Description=Dad Bot Cluster Manager Service
+After=grafana-server.service
+After=postgresql.service
+
+[Service]
+# TO BE FILLED BY OEM
+User=dadbot
+Group=dadbot
+WorkingDirectory=/home/dadbot/dadbot-cluster-manager
+# end of TO BE FILLED BY OEM
+ExecStart=/usr/bin/node .
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
