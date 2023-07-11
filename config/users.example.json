@@ -1,0 +1,10 @@
+// This is an example, you should create your own users.json file with your own users and passwords
+// Comments aren't valid in standard JSON, so you should remove them
+
+// This is a JSON object, it contains key-value pairs
+// The key is the username, the value is the password
+// I don't remember why I made it so you can have multiple users, but it's there
+// Using these in the client is relatively simple, base64 encode the username and password and join the two base64 strings with a period
+{
+  "billy": "1234"
+}
