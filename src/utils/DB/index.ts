@@ -7,11 +7,12 @@ export async function init() {
   await dotenvConfig();
   if (!sequelize) {
     sequelize = new Sequelize(
-      'grafana',
+      process.env.DB_NAME || 'grafana',
       process.env.serverUsername,
       process.env.serverPass,
       {
-        host: 'localhost',
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432'),
         dialect: 'postgres',
         logging: false
       }
